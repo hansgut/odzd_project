@@ -1,0 +1,118 @@
+---
+- name: Install Prometheus and Grafana
+  hosts: all
+  become: true
+  tasks:
+    - name: Update APT packages
+      apt:
+        update_cache: yes
+
+    - name: Install necessary dependencies
+      apt:
+        name:
+          - wget
+          - curl
+          - gnupg
+          - software-properties-common
+        state: present
+
+    # Prometheus installation
+    - name: Create Prometheus user
+      user:
+        name: prometheus
+        system: yes
+        shell: /sbin/nologin
+
+    - name: Download Prometheus
+      get_url:
+        url: https://github.com/prometheus/prometheus/releases/download/v2.43.0/prometheus-2.43.0.linux-amd64.tar.gz
+        dest: /tmp/prometheus.tar.gz
+
+    - name: Extract Prometheus
+      unarchive:
+        src: /tmp/prometheus.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Move Prometheus binaries
+      copy:
+        remote_src: yes
+        src: /tmp/prometheus-2.43.0.linux-amd64/prometheus
+        dest: /usr/local/bin/prometheus
+        mode: '0755'
+
+    - name: Move Prometheus tools
+      copy:
+        remote_src: yes
+        src: /tmp/prometheus-2.43.0.linux-amd64/promtool
+        dest: /usr/local/bin/promtool
+        mode: '0755'
+
+    - name: Create Prometheus directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: prometheus
+        group: prometheus
+        mode: '0755'
+      loop:
+        - /etc/prometheus
+        - /var/lib/prometheus
+
+    - name: Copy Prometheus configuration file
+      copy:
+        dest: /etc/prometheus/prometheus.yml
+        content: |
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: "prometheus"
+              static_configs:
+                - targets: ["localhost:9090"]
+        owner: prometheus
+        group: prometheus
+        mode: '0644'
+
+    - name: Configure Prometheus systemd service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus Service
+          After=network.target
+
+          [Service]
+          User=prometheus
+          Group=prometheus
+          ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload and start Prometheus service
+      systemd:
+        name: prometheus
+        enabled: yes
+        state: started
+
+    # Grafana installation
+    - name: Add Grafana GPG key
+      shell: |
+        wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+        echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+
+    - name: Install Grafana
+      apt:
+        name: grafana
+        state: present
+        update_cache: yes
+
+    - name: Start Grafana service
+      systemd:
+        name: grafana-server
+        enabled: yes
+        state: started
+    

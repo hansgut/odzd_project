@@ -1,0 +1,82 @@
+---
+- name: Install MongoDB and upload JSON collections
+  hosts: all
+  become: true
+  tasks:
+    - name: Update APT package index
+      apt:
+        update_cache: yes
+
+    - name: Add MongoDB official GPG key
+      apt_key:
+        url: https://www.mongodb.org/static/pgp/server-8.0.asc
+        state: present
+
+    - name: Add MongoDB repository
+      apt_repository:
+        repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/8.0 multiverse"
+        state: present
+
+    - name: Install MongoDB
+      apt:
+        name: mongodb-org
+        state: present
+
+    - name: Ensure MongoDB is started and enabled
+      systemd:
+        name: mongod
+        state: started
+        enabled: yes
+
+    - name: Install Python dependencies for MongoDB
+      apt:
+        name: python3-pymongo
+        state: present
+
+    - name: Install pip
+      apt:
+        name: python3-pip
+        state: present
+
+    - name: Ensure data directory exists on host
+      file:
+        path: /home/azureuser/data
+        state: directory
+        owner: azureuser
+        group: azureuser
+        mode: '0755'
+
+    - name: Copy JSON data files from localhost to host
+      copy:
+        src: data/
+        dest: /home/azureuser/data/
+        owner: azureuser
+        group: azureuser
+        mode: '0644'
+    
+    - name: Configure MongoDB to allow access from all IP addresses
+      lineinfile:
+        path: /etc/mongod.conf
+        regexp: '  bindIp: 127.0.0.1'
+        line: '  bindIp: 0.0.0.0'
+      notify: Restart MongoDB
+
+    - name: Import JSON data into MongoDB using mongoimport
+      shell: |
+        for db_dir in /home/azureuser/data/*; do
+          if [ -d "$db_dir" ]; then
+            db_name=$(basename "$db_dir")
+            for json_file in "$db_dir"/*.json; do
+              collection_name=$(basename "$json_file" .json)
+              mongoimport --db "$db_name" --collection "$collection_name" --file "$json_file"
+            done
+          fi
+        done
+      args:
+        executable: /bin/bash
+
+  handlers:
+    - name: Restart MongoDB
+      systemd:
+        name: mongod
+        state: restarted

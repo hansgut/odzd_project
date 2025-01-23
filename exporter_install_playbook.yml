@@ -1,0 +1,83 @@
+---
+- name: Install MongoDB Exporter 0.43.1 for Prometheus
+  hosts: all
+  become: true
+  tasks:
+    - name: Update and upgrade APT packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+      tags: update
+
+    - name: Install required dependencies
+      apt:
+        name:
+          - wget
+          - tar
+        state: present
+      tags: dependencies
+
+    - name: Create a directory for MongoDB Exporter
+      file:
+        path: /opt/mongodb_exporter
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      tags: setup
+
+    - name: Download MongoDB Exporter 0.43.1 binary
+      get_url:
+        url: "https://github.com/percona/mongodb_exporter/releases/download/v0.43.1/mongodb_exporter-0.43.1.linux-amd64.tar.gz"
+        dest: /tmp/mongodb_exporter.tar.gz
+      tags: download
+
+    - name: Extract MongoDB Exporter binary
+      unarchive:
+        src: /tmp/mongodb_exporter.tar.gz
+        dest: /opt/mongodb_exporter
+        remote_src: yes
+      tags: extract
+
+    - name: Move MongoDB Exporter binary to /usr/local/bin
+      copy:
+        src: /opt/mongodb_exporter/mongodb_exporter-0.43.1.linux-amd64/mongodb_exporter
+        dest: /usr/local/bin/mongodb_exporter
+        remote_src: yes
+        mode: '0755'
+      tags: binary
+
+    - name: Create a systemd service file for MongoDB Exporter
+      copy:
+        dest: /etc/systemd/system/mongodb_exporter.service
+        content: |
+          [Unit]
+          Description=MongoDB Exporter for Prometheus
+          After=network.target
+
+          [Service]
+          User=prometheus
+          Group=prometheus
+          ExecStart=/usr/local/bin/mongodb_exporter --mongodb.uri=mongodb://localhost:27017 --compatible-mode --collect-all
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+      tags: service
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      tags: systemd
+
+    - name: Enable and start MongoDB Exporter service
+      systemd:
+        name: mongodb_exporter
+        enabled: yes
+        state: started
+      tags: start
+
+    - name: Clean up temporary files
+      file:
+        path: /tmp/mongodb_exporter.tar.gz
+        state: absent
+      tags: cleanup

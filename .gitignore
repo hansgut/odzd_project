@@ -35,3 +35,25 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# vscode
+
+.vscode
+.idea
+*.iml
+
+# venv
+venv
+
+# python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# jupyter
+.ipynb_checkpoints
+
+# data but save the data folder
+data
+!data/.gitkeep
