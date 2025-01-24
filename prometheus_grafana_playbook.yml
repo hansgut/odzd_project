@@ -70,6 +70,9 @@
             - job_name: "prometheus"
               static_configs:
                 - targets: ["localhost:9090"]
+            - job_name: "mongodb"
+              static_configs:
+                - targets: ["localhost:9216"]
         owner: prometheus
         group: prometheus
         mode: '0644'
